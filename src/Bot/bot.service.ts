@@ -14,37 +14,51 @@ export class BotService implements OnModuleInit {
     private callbackHandler: CallbackHandler,
   ) {}
 
+  private restarting = false;
+
   onModuleInit() {
     const token = this.config.get<string>('BOT_TOKEN');
     if (!token) throw new Error('BOT_TOKEN missing');
-
+  
     this.bot = new TelegramBot(token, {
       polling: {
-        interval: 300,
-        autoStart: true,
-        params: {
-          timeout: 10,
-        },
+        autoStart: false,
+        params: { timeout: 10 },
       },
     });
-
-    this.bot.on('polling_error', async () => {
-      console.log('Restarting polling...');
+  
+    this.bot.on('polling_error', async (err) => {
+      console.error('Polling error:', err.message);
+  
+      if (this.restarting) return;
+      this.restarting = true;
+  
       try {
-        await this.bot.stopPolling();
+        await this.bot.stopPolling().catch(() => {});
+        await new Promise((r) => setTimeout(r, 2000));
         await this.bot.startPolling();
-      } catch (e) {
-        console.error('Failed to restart polling', e);
+      } finally {
+        this.restarting = false;
       }
     });
-
-    this.bot.on('message', (msg) => {
-      this.update.handleMessage(msg);
+  
+    this.bot.on('message', async (msg) => {
+      try {
+        await this.update.handleMessage(msg);
+      } catch (e) {
+        console.error(e);
+      }
     });
-
-    this.bot.on('callback_query', (query) => {
-      this.callbackHandler.handle(query);
+  
+    this.bot.on('callback_query', async (query) => {
+      try {
+        await this.callbackHandler.handle(query);
+      } catch (e) {
+        console.error(e);
+      }
     });
+  
+    this.bot.startPolling();
   }
 
   sendMessage(chatId: number | string, text: string, options?: any) {

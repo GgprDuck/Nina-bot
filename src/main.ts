@@ -7,6 +7,14 @@ async function bootstrap() {
   console.log(`Bot is running on port ${process.env.PORT ?? 3000}`);
 }
 
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason);
+});
+
 bootstrap().catch((error) => {
   console.error(error);
   process.exit(1);
