@@ -18,7 +18,25 @@ export class BotService implements OnModuleInit {
     const token = this.config.get<string>('BOT_TOKEN');
     if (!token) throw new Error('BOT_TOKEN missing');
 
-    this.bot = new TelegramBot(token, { polling: true });
+    this.bot = new TelegramBot(token, {
+      polling: {
+        interval: 300,
+        autoStart: true,
+        params: {
+          timeout: 10,
+        },
+      },
+    });
+
+    this.bot.on('polling_error', async () => {
+      console.log('Restarting polling...');
+      try {
+        await this.bot.stopPolling();
+        await this.bot.startPolling();
+      } catch (e) {
+        console.error('Failed to restart polling', e);
+      }
+    });
 
     this.bot.on('message', (msg) => {
       this.update.handleMessage(msg);
