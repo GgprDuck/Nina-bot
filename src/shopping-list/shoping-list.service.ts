@@ -39,6 +39,18 @@ export class ShoppingListService {
     return this.repository.findByTitle(title);
   }
 
+  findByIdOptional(id: string) {
+    return this.repository.findById(id);
+  }
+
+  async removeById(id: string) {
+    const product = await this.repository.findById(id);
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+    return this.repository.delete(id);
+  }
+
   async update(
     id: string,
     data: Partial<{

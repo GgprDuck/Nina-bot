@@ -139,6 +139,26 @@ export class BotService implements OnModuleInit {
     return this.bot.sendMessage(chatId, text, options);
   }
 
+  answerCallbackQuery(
+    callbackQueryId: string,
+    options?: { text?: string; show_alert?: boolean },
+  ) {
+    return this.bot.answerCallbackQuery(callbackQueryId, options);
+  }
+
+  editMessageText(
+    chatId: number,
+    messageId: number,
+    text: string,
+    options?: { parse_mode?: string; reply_markup?: any },
+  ) {
+    return this.bot.editMessageText(text, {
+      chat_id: chatId,
+      message_id: messageId,
+      ...options,
+    } as Parameters<TelegramBot['editMessageText']>[1]);
+  }
+
   getMainMenu() {
     return {
       keyboard: [
@@ -169,6 +189,20 @@ export class BotService implements OnModuleInit {
         [{ text: '➕ Add recipe' }],
         [{ text: '📋 Recipes list' }],
         [{ text: '❌ Delete recipe' }],
+        [{ text: '⬅️ Back' }],
+      ],
+      resize_keyboard: true,
+    };
+  }
+
+  getSpendingsMenu() {
+    return {
+      keyboard: [
+        [{ text: '➕ Add spending' }],
+        [{ text: '📊 This month' }],
+        [{ text: '📅 Month (YYYY-MM)' }],
+        [{ text: '💱 Report currency' }],
+        [{ text: '❌ Delete spending' }],
         [{ text: '⬅️ Back' }],
       ],
       resize_keyboard: true,

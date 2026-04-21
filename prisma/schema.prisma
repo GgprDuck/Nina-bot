@@ -29,6 +29,8 @@ model Spendings {
   id             String   @id @default(uuid())
   category       String
   amount         Float
+  description    String?
+  currency       String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }

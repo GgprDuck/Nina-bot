@@ -11,6 +11,7 @@ import { MenuHandler } from './handlers/menu.handler';
 import { FlowHandler } from './handlers/flow.handler';
 import { ShoppingListModule } from 'src/shopping-list/shopping-list.module';
 import { RecipiesModule } from 'src/recipies/recipies.module';
+import { SpendingsModule } from 'src/spendings/spendings.module';
 import { CallbackHandler } from './handlers/callback.handler';
 
 @Module({
@@ -18,6 +19,7 @@ import { CallbackHandler } from './handlers/callback.handler';
     DiscoveryModule,
     ShoppingListModule,
     RecipiesModule,
+    SpendingsModule,
   ],
   providers: [
     BotService,

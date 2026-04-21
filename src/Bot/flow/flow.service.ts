@@ -1,6 +1,20 @@
 import { Injectable } from '@nestjs/common';
 
-export type FlowStep = 'product' | 'shop' | 'discount' | 'delete' | 'recipe' | 'recipe_ingredients' | 'recipe_name' | 'recipe_instructions' | 'recipe_confirm';
+export type FlowStep =
+  | 'product'
+  | 'shop'
+  | 'discount'
+  | 'recipe'
+  | 'recipe_ingredients'
+  | 'recipe_name'
+  | 'recipe_instructions'
+  | 'recipe_confirm'
+  | 'spending_category'
+  | 'spending_amount'
+  | 'spending_currency'
+  | 'spending_description'
+  | 'spending_month_query'
+  | 'spending_set_report_currency';
 
 @Injectable()
 export class FlowService {

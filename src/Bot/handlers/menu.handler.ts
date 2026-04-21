@@ -1,9 +1,12 @@
 import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Message } from 'node-telegram-bot-api';
 import { ShoppingListService } from 'src/shopping-list/shoping-list.service';
 import { BotService } from '../bot.service';
 import { FlowService } from '../flow/flow.service';
 import { RecipiesService } from 'src/recipies/recipies.service';
+import { SpendingsService } from 'src/spendings/spendings.service';
+import { buildRecipesListPayload } from '../helpers/recipes-list.keyboard';
 
 @Injectable()
 export class MenuHandler {
@@ -12,6 +15,8 @@ export class MenuHandler {
     private flow: FlowService,
     private shopping: ShoppingListService,
     private recipies: RecipiesService,
+    private spendings: SpendingsService,
+    private config: ConfigService,
   ) {}
 
   async handle(msg: Message): Promise<boolean> {
@@ -30,41 +35,21 @@ export class MenuHandler {
 
     if (text === '📋 Recipes list') {
       const recipes = await this.recipies.findAll();
-    
+
       if (!recipes.length) {
         await this.bot.sendMessage(chatId, '😕 No recipes yet.\n', {
+          reply_markup: this.bot.getRecipiesMenu(),
         });
         return true;
       }
-    
-      const inlineKeyboard = [];
-    
-      for (let i = 0; i < recipes.length; i += 2) {
-        inlineKeyboard.push([
-          {
-            text: `🍲 ${recipes[i].title}`,
-            callback_data: `recipe_${recipes[i].id}`,
-          },
-          recipes[i + 1]
-            ? {
-                text: `🍲 ${recipes[i + 1].title}`,
-                callback_data: `recipe_${recipes[i + 1].id}`,
-              }
-            : undefined,
-        ].filter(Boolean));
-      }
-    
-      await this.bot.sendMessage(
-        chatId,
-        `🍲 *Recipes Menu*\n\nFound: *${recipes.length}* recipes\n\nChoose one below 👇`,
-        {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: inlineKeyboard,
-          },
-        }
-      );
-    
+
+      const payload = buildRecipesListPayload(recipes, 0);
+
+      await this.bot.sendMessage(chatId, payload.text, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: payload.inline_keyboard },
+      });
+
       return true;
     }
 
@@ -99,8 +84,117 @@ export class MenuHandler {
 
     if (text === '💸 Spendings') {
       this.flow.delete(chatId);
-      await this.bot.sendMessage(chatId, '💸 Coming soon...', {
-        reply_markup: this.bot.getMainMenu(),
+      await this.bot.sendMessage(chatId, '💸 Spendings:', {
+        reply_markup: this.bot.getSpendingsMenu(),
+      });
+      return true;
+    }
+
+    if (text === '➕ Add spending') {
+      this.flow.set(chatId, { step: 'spending_category', data: {} });
+      await this.bot.sendMessage(
+        chatId,
+        '💸 *Add spending*\n\nStep 1/4: Enter category (e.g. Food, Transport)',
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            keyboard: [[{ text: '❌ Cancel spending' }]],
+            resize_keyboard: true,
+          },
+        },
+      );
+      return true;
+    }
+
+    if (text === '📊 This month') {
+      const now = new Date();
+      const year = now.getUTCFullYear();
+      const month = now.getUTCMonth();
+      const reportCc = this.spendings.getReportCurrencyForChat(
+        chatId,
+        this.config.get<string>('SPENDING_REPORT_CURRENCY') ?? 'EUR',
+      );
+      await this.sendMonthlySpendingsSummary(chatId, year, month, reportCc);
+      return true;
+    }
+
+    if (text === '📅 Month (YYYY-MM)') {
+      this.flow.set(chatId, { step: 'spending_month_query', data: {} });
+      await this.bot.sendMessage(
+        chatId,
+        'Enter month as *YYYY-MM* (UTC), e.g. `2026-04`',
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            keyboard: [[{ text: '❌ Cancel spending' }]],
+            resize_keyboard: true,
+          },
+        },
+      );
+      return true;
+    }
+
+    if (text === '💱 Report currency') {
+      this.flow.set(chatId, { step: 'spending_set_report_currency', data: {} });
+      const current = this.spendings.getReportCurrencyForChat(
+        chatId,
+        this.config.get<string>('SPENDING_REPORT_CURRENCY') ?? 'EUR',
+      );
+      await this.bot.sendMessage(
+        chatId,
+        `Totals for monthly reports are converted to one currency.\n\nCurrent: *${current}*\n\nSend a 3-letter code (e.g. EUR, USD, UAH).`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            keyboard: [[{ text: '❌ Cancel spending' }]],
+            resize_keyboard: true,
+          },
+        },
+      );
+      return true;
+    }
+
+    if (text === '❌ Delete spending') {
+      this.flow.delete(chatId);
+      const items = await this.spendings.findRecent(40);
+
+      if (!items.length) {
+        await this.bot.sendMessage(chatId, '😕 No spendings to delete.', {
+          reply_markup: this.bot.getSpendingsMenu(),
+        });
+        return true;
+      }
+
+      const inlineKeyboard = items.map((s) => {
+        const note = s.description ? ` · ${s.description}` : '';
+        const label = `🗑 ${s.amount} ${s.currency} ${s.category}${note}`;
+        return [
+          {
+            text: label.length > 64 ? label.slice(0, 61) + '…' : label,
+            callback_data: `delete_spending_${s.id}`,
+          },
+        ];
+      });
+
+      inlineKeyboard.push([
+        { text: '⬅️ Back', callback_data: 'menu_spendings' },
+      ]);
+
+      await this.bot.sendMessage(
+        chatId,
+        '🗑 *Select a spending to delete:*\n\n_Latest 40 entries._',
+        {
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: inlineKeyboard },
+        },
+      );
+      return true;
+    }
+
+    if (text === '❌ Cancel spending') {
+      this.flow.delete(chatId);
+      await this.bot.sendMessage(chatId, '💸 Operation cancelled.', {
+        reply_markup: this.bot.getSpendingsMenu(),
       });
       return true;
     }
@@ -188,6 +282,7 @@ export class MenuHandler {
     }
 
     if (text === '❌ Delete product') {
+      this.flow.delete(chatId);
       const items = await this.shopping.findAll();
 
       if (!items.length) {
@@ -197,11 +292,27 @@ export class MenuHandler {
         return true;
       }
 
-      const list = items.map(i => `• ${i.title}`).join('\n');
-      this.flow.set(chatId, { step: 'delete', data: {} });
+      const inlineKeyboard = items.map((item) => {
+        const label = `🗑 ${item.title} · ${item.shopName || '—'}`;
+        return [
+          {
+            text: label.length > 64 ? label.slice(0, 61) + '…' : label,
+            callback_data: `delete_product_${item.id}`,
+          },
+        ];
+      });
+
+      inlineKeyboard.push([
+        { text: '⬅️ Back', callback_data: 'menu_shopping' },
+      ]);
+
       await this.bot.sendMessage(
         chatId,
-        `🗑️ Enter the product name to delete:\n\n${list}`,
+        '🗑 *Select a product to delete:*',
+        {
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: inlineKeyboard },
+        },
       );
       return true;
     }
@@ -239,5 +350,30 @@ export class MenuHandler {
     }
 
     return false;
+  }
+
+  private async sendMonthlySpendingsSummary(
+    chatId: number,
+    year: number,
+    monthIndex0: number,
+    reportCurrency: string,
+  ) {
+    try {
+      const body = await this.spendings.getMonthlyReportMessage(
+        year,
+        monthIndex0,
+        reportCurrency,
+      );
+      await this.bot.sendMessage(chatId, body, {
+        parse_mode: 'Markdown',
+        reply_markup: this.bot.getSpendingsMenu(),
+      });
+    } catch (e) {
+      const message =
+        e instanceof Error ? e.message : 'Could not load spendings summary.';
+      await this.bot.sendMessage(chatId, `⚠️ ${message}`, {
+        reply_markup: this.bot.getSpendingsMenu(),
+      });
+    }
   }
 }
