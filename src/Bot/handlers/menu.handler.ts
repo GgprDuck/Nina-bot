@@ -176,10 +176,6 @@ export class MenuHandler {
         ];
       });
 
-      inlineKeyboard.push([
-        { text: '⬅️ Back', callback_data: 'menu_spendings' },
-      ]);
-
       await this.bot.sendMessage(
         chatId,
         '🗑 *Select a spending to delete:*\n\n_Latest 40 entries._',
@@ -254,10 +250,6 @@ export class MenuHandler {
         },
       ]);
     
-      inlineKeyboard.push([
-        { text: '⬅️ Back', callback_data: 'menu_main' }
-      ]);
-    
       await this.bot.sendMessage(
         chatId,
         '🗑 *Select a recipe to delete:*',
@@ -301,10 +293,6 @@ export class MenuHandler {
           },
         ];
       });
-
-      inlineKeyboard.push([
-        { text: '⬅️ Back', callback_data: 'menu_shopping' },
-      ]);
 
       await this.bot.sendMessage(
         chatId,

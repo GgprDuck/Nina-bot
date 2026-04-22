@@ -36,7 +36,6 @@ export function buildRecipesListPayload(
     navRow.push({ text: 'Next ▶️', callback_data: `recipes_pg_${p + 1}` });
   }
   rows.push(navRow);
-  rows.push([{ text: '⬅️ Back', callback_data: 'menu_recipes' }]);
 
   return {
     text:
