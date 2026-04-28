@@ -8,14 +8,17 @@ export class RecipiesRepository {
     private readonly prisma: PrismaService) {}
 
   create(
-    data: Omit<Recipe, 'id' | 'createdAt' | 'updatedAt'>,
+    chatId: number,
+    data: Omit<Recipe, 'id' | 'chatId' | 'createdAt' | 'updatedAt'>,
   ): Promise<Recipe> {
-    return this.prisma.recipe.create({ data: data });
+    return this.prisma.recipe.create({
+      data: { ...data, chatId: BigInt(chatId) },
+    });
   }
 
-  findByTitle(title: string): Promise<Recipe | null> {
+  findByTitle(chatId: number, title: string): Promise<Recipe | null> {
     return this.prisma.recipe.findFirst({
-      where: { title },
+      where: { chatId: BigInt(chatId), title },
     });
   }
 
@@ -23,28 +26,29 @@ export class RecipiesRepository {
     return this.prisma.recipe.deleteMany();
   }
 
-  findAll(): Promise<Recipe[]> {
+  findAll(chatId: number): Promise<Recipe[]> {
     return this.prisma.recipe.findMany({
+      where: { chatId: BigInt(chatId) },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  findById(id: string): Promise<Recipe | null> {
-    return this.prisma.recipe.findUnique({
-      where: { id },
+  findById(chatId: number, id: string): Promise<Recipe | null> {
+    return this.prisma.recipe.findFirst({
+      where: { id, chatId: BigInt(chatId) },
     });
   }
 
-  update(id: string, data: Partial<Recipe>) {
+  update(chatId: number, id: string, data: Partial<Recipe>) {
     return this.prisma.recipe.update({
       where: { id },
-      data,
+      data: { ...data, chatId: BigInt(chatId) },
     });
   }
 
-  delete(id: string) {
-    return this.prisma.recipe.delete({
-      where: { id },
+  delete(chatId: number, id: string) {
+    return this.prisma.recipe.deleteMany({
+      where: { id, chatId: BigInt(chatId) },
     });
   }
 }

@@ -9,28 +9,85 @@ datasource db {
 
 model ShoppingList {
   id             String   @id @default(uuid())
-  title          String   @unique
+  chatId         BigInt   @default(0)
+  title          String
   shopName       String
   kindOfDiscount String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  @@index([chatId])
 }
 
 model Recipe {
   id             String   @id @default(uuid())
+  chatId         BigInt   @default(0)
   title          String   
   ingredients    String[]
   instructions   String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  @@index([chatId])
 }
 
 model Spendings {
   id             String   @id @default(uuid())
+  chatId         BigInt   @default(0)
   category       String
   amount         Float
   description    String?
   currency       String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  @@index([chatId, createdAt])
+}
+
+model ChatSettings {
+  chatId                BigInt   @id
+  timezone              String   @default("UTC")
+  defaultCurrency       String   @default("USD")
+  reportCurrency        String   @default("EUR")
+  language              String   @default("en")
+  morningDigestEnabled  Boolean  @default(false)
+  eveningDigestEnabled  Boolean  @default(false)
+  quietHoursStart       String?
+  quietHoursEnd         String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model Reminder {
+  id          String    @id @default(uuid())
+  chatId      BigInt
+  text        String
+  remindAt    DateTime
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([chatId, remindAt])
+  @@index([completedAt, remindAt])
+}
+
+model SharedSpace {
+  id          BigInt              @id @default(autoincrement())
+  name        String
+  code        String              @unique
+  ownerChatId BigInt
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  members     SharedSpaceMember[]
+}
+
+model SharedSpaceMember {
+  id            String      @id @default(uuid())
+  chatId        BigInt      @unique
+  sharedSpaceId BigInt
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  sharedSpace   SharedSpace @relation(fields: [sharedSpaceId], references: [id], onDelete: Cascade)
+
+  @@index([sharedSpaceId])
 }

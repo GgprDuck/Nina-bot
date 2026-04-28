@@ -162,9 +162,12 @@ export class BotService implements OnModuleInit {
   getMainMenu() {
     return {
       keyboard: [
+        [{ text: '🗓 Assistant' }],
+        [{ text: '👥 Shared data' }],
         [{ text: '🍲 Recipes' }],
         [{ text: '🛒 Shopping List' }],
         [{ text: '💸 Spendings' }],
+        [{ text: 'ℹ️ Help' }],
       ],
       resize_keyboard: true,
     };
@@ -174,9 +177,38 @@ export class BotService implements OnModuleInit {
     return {
       keyboard: [
         [{ text: '➕ Add product' }],
+        [{ text: '⚡ Quick add product' }],
         [{ text: '📋 Products list' }],
+        [{ text: '✏️ Edit product' }],
         [{ text: '❌ Delete product' }],
         [{ text: '❌ Delete all products' }],
+        [{ text: '⬅️ Back' }],
+      ],
+      resize_keyboard: true,
+    };
+  }
+
+  getAssistantMenu() {
+    return {
+      keyboard: [
+        [{ text: '➕ Add reminder' }],
+        [{ text: '⚡ Quick reminder' }],
+        [{ text: '📋 Reminders' }],
+        [{ text: '✏️ Edit reminder' }],
+        [{ text: '❌ Delete reminder' }],
+        [{ text: '⬅️ Back' }],
+      ],
+      resize_keyboard: true,
+    };
+  }
+
+  getSharedDataMenu() {
+    return {
+      keyboard: [
+        [{ text: '➕ Create shared space' }],
+        [{ text: '🔑 Join shared space' }],
+        [{ text: 'ℹ️ Shared data status' }],
+        [{ text: '🚪 Leave shared space' }],
         [{ text: '⬅️ Back' }],
       ],
       resize_keyboard: true,
@@ -188,6 +220,7 @@ export class BotService implements OnModuleInit {
       keyboard: [
         [{ text: '➕ Add recipe' }],
         [{ text: '📋 Recipes list' }],
+        [{ text: '✏️ Edit recipe' }],
         [{ text: '❌ Delete recipe' }],
         [{ text: '⬅️ Back' }],
       ],
@@ -199,9 +232,11 @@ export class BotService implements OnModuleInit {
     return {
       keyboard: [
         [{ text: '➕ Add spending' }],
+        [{ text: '⚡ Quick add spending' }],
         [{ text: '📊 This month' }],
         [{ text: '📅 Month (YYYY-MM)' }],
         [{ text: '💱 Report currency' }],
+        [{ text: '✏️ Edit spending' }],
         [{ text: '❌ Delete spending' }],
         [{ text: '⬅️ Back' }],
       ],

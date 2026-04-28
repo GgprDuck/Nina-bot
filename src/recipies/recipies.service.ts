@@ -5,7 +5,7 @@ import { RecipiesRepository } from './recipies.repository';
 export class RecipiesService {
   constructor(private readonly repository: RecipiesRepository) {}
 
-  async create(input: {
+  async create(chatId: number, input: {
     title: string;
     ingredients: string[];
     instructions: string;
@@ -14,15 +14,15 @@ export class RecipiesService {
       throw new BadRequestException('Title is required');
     }
 
-    return this.repository.create(input);
+    return this.repository.create(chatId, input);
   }
 
-  findAll() {
-    return this.repository.findAll();
+  findAll(chatId: number) {
+    return this.repository.findAll(chatId);
   }
 
-  async findOne(title: string) {
-    const list = await this.repository.findByTitle(title);
+  async findOne(chatId: number, title: string) {
+    const list = await this.repository.findByTitle(chatId, title);
 
     if (!list) {
       throw new NotFoundException('Recipe not found');
@@ -31,15 +31,16 @@ export class RecipiesService {
     return list;
   }
 
-  findById(id: string) {
-    return this.repository.findById(id);
+  findById(chatId: number, id: string) {
+    return this.repository.findById(chatId, id);
   }
 
-  findOneByTitle(title: string) {
-    return this.repository.findByTitle(title);
+  findOneByTitle(chatId: number, title: string) {
+    return this.repository.findByTitle(chatId, title);
   }
 
   async update(
+    chatId: number,
     id: string,
     data: Partial<{
       title: string;
@@ -47,11 +48,14 @@ export class RecipiesService {
       instructions: string;
     }>,
   ) {
-    await this.findOne(id);
-    return this.repository.update(id, data);
+    const recipe = await this.repository.findById(chatId, id);
+    if (!recipe) {
+      throw new NotFoundException('Recipe not found');
+    }
+    return this.repository.update(chatId, id, data);
   }
 
-  async remove(id: string) {
-    return this.repository.delete(id);
+  async remove(chatId: number, id: string) {
+    return this.repository.delete(chatId, id);
   }
 }

@@ -7,14 +7,18 @@ export class SpendingsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   create(
-    data: Omit<Spendings, 'id' | 'createdAt' | 'updatedAt'>,
+    chatId: number,
+    data: Omit<Spendings, 'id' | 'chatId' | 'createdAt' | 'updatedAt'>,
   ): Promise<Spendings> {
-    return this.prisma.spendings.create({ data });
+    return this.prisma.spendings.create({
+      data: { ...data, chatId: BigInt(chatId) },
+    });
   }
 
-  findBetween(start: Date, end: Date): Promise<Spendings[]> {
+  findBetween(chatId: number, start: Date, end: Date): Promise<Spendings[]> {
     return this.prisma.spendings.findMany({
       where: {
+        chatId: BigInt(chatId),
         createdAt: {
           gte: start,
           lt: end,
@@ -24,18 +28,34 @@ export class SpendingsRepository {
     });
   }
 
-  findRecent(limit: number): Promise<Spendings[]> {
+  findRecent(chatId: number, limit: number): Promise<Spendings[]> {
     return this.prisma.spendings.findMany({
+      where: { chatId: BigInt(chatId) },
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
   }
 
-  findById(id: string): Promise<Spendings | null> {
-    return this.prisma.spendings.findUnique({ where: { id } });
+  findById(chatId: number, id: string): Promise<Spendings | null> {
+    return this.prisma.spendings.findFirst({
+      where: { id, chatId: BigInt(chatId) },
+    });
   }
 
-  delete(id: string): Promise<Spendings> {
-    return this.prisma.spendings.delete({ where: { id } });
+  delete(chatId: number, id: string) {
+    return this.prisma.spendings.deleteMany({
+      where: { id, chatId: BigInt(chatId) },
+    });
+  }
+
+  update(
+    chatId: number,
+    id: string,
+    data: Partial<Omit<Spendings, 'id' | 'chatId' | 'createdAt' | 'updatedAt'>>,
+  ) {
+    return this.prisma.spendings.updateMany({
+      where: { id, chatId: BigInt(chatId) },
+      data,
+    });
   }
 }

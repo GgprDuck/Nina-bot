@@ -5,6 +5,9 @@ import { RecipiesService } from 'src/recipies/recipies.service';
 import { SpendingsService } from 'src/spendings/spendings.service';
 import { ShoppingListService } from 'src/shopping-list/shoping-list.service';
 import { buildRecipesListPayload } from '../helpers/recipes-list.keyboard';
+import { RemindersService } from 'src/reminders/reminders.service';
+import { FlowService } from '../flow/flow.service';
+import { SharedSpaceService } from 'src/shared-space/shared-space.service';
 
 @Injectable()
 export class CallbackHandler {
@@ -13,6 +16,9 @@ export class CallbackHandler {
     private readonly recipies: RecipiesService,
     private readonly spendings: SpendingsService,
     private readonly shopping: ShoppingListService,
+    private readonly reminders: RemindersService,
+    private readonly flow: FlowService,
+    private readonly sharedSpace: SharedSpaceService,
   ) {}
 
   async handle(query: CallbackQuery) {
@@ -20,9 +26,18 @@ export class CallbackHandler {
 
     const chatId = query.message?.chat.id;
     if (!chatId) return;
+    const scopeChatId = await this.sharedSpace.resolveScopeChatId(chatId);
 
     const ack = () =>
       this.bot.answerCallbackQuery(query.id).catch(() => undefined);
+
+    if (query.data === 'menu_main') {
+      await ack();
+      await this.bot.sendMessage(chatId, 'Main menu:', {
+        reply_markup: this.bot.getMainMenu(),
+      });
+      return true;
+    }
 
     if (query.data === 'menu_shopping') {
       await ack();
@@ -32,10 +47,82 @@ export class CallbackHandler {
       return true;
     }
 
+    if (query.data === 'menu_assistant') {
+      await ack();
+      await this.bot.sendMessage(chatId, '🗓 Assistant menu:', {
+        reply_markup: this.bot.getAssistantMenu(),
+      });
+      return true;
+    }
+
+    if (query.data.startsWith('complete_reminder_')) {
+      const id = query.data.replace('complete_reminder_', '');
+      try {
+        await this.reminders.complete(id);
+        await this.bot.answerCallbackQuery(query.id, { text: 'Done' });
+      } catch {
+        await this.bot.answerCallbackQuery(query.id, {
+          text: 'Reminder already completed or deleted.',
+        });
+      }
+      return true;
+    }
+
+    if (query.data.startsWith('delete_reminder_')) {
+      const id = query.data.replace('delete_reminder_', '');
+      try {
+        await this.reminders.remove(scopeChatId, id);
+        await ack();
+        await this.bot.sendMessage(chatId, '🗑 Reminder deleted.', {
+          reply_markup: this.bot.getAssistantMenu(),
+        });
+      } catch {
+        await ack();
+        await this.bot.sendMessage(chatId, '⚠️ Reminder not found.', {
+          reply_markup: this.bot.getAssistantMenu(),
+        });
+      }
+      return true;
+    }
+
+    if (query.data.startsWith('edit_reminder_')) {
+      const id = query.data.replace('edit_reminder_', '');
+      const reminder = await this.reminders.findByIdOptional(scopeChatId, id);
+      if (!reminder) {
+        await ack();
+        await this.bot.sendMessage(chatId, '⚠️ Reminder not found.', {
+          reply_markup: this.bot.getAssistantMenu(),
+        });
+        return true;
+      }
+
+      this.flow.set(chatId, { step: 'edit_reminder_value', data: { id } });
+      await ack();
+      await this.bot.sendMessage(
+        chatId,
+        [
+          `Current: ${this.reminders.formatReminderTime(reminder.remindAt)} — ${reminder.text}`,
+          '',
+          'Send updated reminder as:',
+          '`in 45m call mom`',
+          '`tomorrow 08:30 gym`',
+          '`2026-05-01 09:00 pay rent`',
+        ].join('\n'),
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            keyboard: [[{ text: '❌ Cancel reminder' }]],
+            resize_keyboard: true,
+          },
+        },
+      );
+      return true;
+    }
+
     if (query.data.startsWith('confirm_delete_product_')) {
       const id = query.data.replace('confirm_delete_product_', '');
       try {
-        await this.shopping.removeById(id);
+        await this.shopping.removeById(scopeChatId, id);
         await ack();
         await this.bot.sendMessage(chatId, '🗑 Product deleted.', {
           reply_markup: this.bot.getShoppingMenu(),
@@ -53,7 +140,7 @@ export class CallbackHandler {
 
     if (query.data.startsWith('delete_product_')) {
       const id = query.data.replace('delete_product_', '');
-      const row = await this.shopping.findByIdOptional(id);
+      const row = await this.shopping.findByIdOptional(scopeChatId, id);
       if (!row) {
         await ack();
         await this.bot.sendMessage(
@@ -86,6 +173,39 @@ export class CallbackHandler {
       return true;
     }
 
+    if (query.data.startsWith('edit_product_')) {
+      const id = query.data.replace('edit_product_', '');
+      const row = await this.shopping.findByIdOptional(scopeChatId, id);
+      if (!row) {
+        await ack();
+        await this.bot.sendMessage(chatId, '⚠️ Product not found.', {
+          reply_markup: this.bot.getShoppingMenu(),
+        });
+        return true;
+      }
+
+      this.flow.set(chatId, { step: 'edit_product_value', data: { id } });
+      await ack();
+      await this.bot.sendMessage(
+        chatId,
+        [
+          `Current: ${row.title} | ${row.shopName || '-'} | ${row.kindOfDiscount || '-'}`,
+          '',
+          'Send updated product as:',
+          '`title | shop | discount`',
+          'Use `-` to skip shop or discount.',
+        ].join('\n'),
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            keyboard: [[{ text: '❌ Cancel product' }]],
+            resize_keyboard: true,
+          },
+        },
+      );
+      return true;
+    }
+
     if (query.data === 'menu_recipes') {
       await ack();
       await this.bot.sendMessage(chatId, '🍲 Recipes menu:', {
@@ -111,7 +231,7 @@ export class CallbackHandler {
         return true;
       }
 
-      const recipes = await this.recipies.findAll();
+      const recipes = await this.recipies.findAll(scopeChatId);
       if (!recipes.length) {
         await ack();
         await this.bot.sendMessage(chatId, '😕 No recipes yet.', {
@@ -157,7 +277,7 @@ export class CallbackHandler {
     if (query.data.startsWith('confirm_delete_spending_')) {
       const id = query.data.replace('confirm_delete_spending_', '');
       try {
-        await this.spendings.remove(id);
+        await this.spendings.remove(scopeChatId, id);
         await ack();
         await this.bot.sendMessage(chatId, '🗑 Spending deleted.', {
           reply_markup: this.bot.getSpendingsMenu(),
@@ -175,7 +295,7 @@ export class CallbackHandler {
 
     if (query.data.startsWith('delete_spending_')) {
       const id = query.data.replace('delete_spending_', '');
-      const row = await this.spendings.findByIdOptional(id);
+      const row = await this.spendings.findByIdOptional(scopeChatId, id);
       if (!row) {
         await ack();
         await this.bot.sendMessage(
@@ -209,9 +329,42 @@ export class CallbackHandler {
       return true;
     }
 
+    if (query.data.startsWith('edit_spending_')) {
+      const id = query.data.replace('edit_spending_', '');
+      const row = await this.spendings.findByIdOptional(scopeChatId, id);
+      if (!row) {
+        await ack();
+        await this.bot.sendMessage(chatId, '⚠️ Spending not found.', {
+          reply_markup: this.bot.getSpendingsMenu(),
+        });
+        return true;
+      }
+
+      this.flow.set(chatId, { step: 'edit_spending_value', data: { id } });
+      await ack();
+      await this.bot.sendMessage(
+        chatId,
+        [
+          `Current: ${row.category} | ${row.amount} | ${row.currency} | ${row.description || '-'}`,
+          '',
+          'Send updated spending as:',
+          '`category | amount | currency | note`',
+          'Use `-` to skip note.',
+        ].join('\n'),
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            keyboard: [[{ text: '❌ Cancel spending' }]],
+            resize_keyboard: true,
+          },
+        },
+      );
+      return true;
+    }
+
     if (query.data.startsWith('recipe_')) {
       const id = query.data.replace('recipe_', '');
-      const recipe = await this.recipies.findById(id);
+      const recipe = await this.recipies.findById(scopeChatId, id);
 
       if (!recipe) return;
 
@@ -223,6 +376,41 @@ export class CallbackHandler {
           `📖 Instructions:\n${recipe.instructions}`,
         { parse_mode: 'Markdown' },
       );
+    }
+
+    if (query.data.startsWith('edit_recipe_')) {
+      const id = query.data.replace('edit_recipe_', '');
+      const recipe = await this.recipies.findById(scopeChatId, id);
+
+      if (!recipe) {
+        await ack();
+        await this.bot.sendMessage(chatId, '⚠️ Recipe not found.', {
+          reply_markup: this.bot.getRecipiesMenu(),
+        });
+        return true;
+      }
+
+      this.flow.set(chatId, { step: 'edit_recipe_value', data: { id } });
+      await ack();
+      await this.bot.sendMessage(
+        chatId,
+        [
+          `Current: ${recipe.title}`,
+          `Ingredients: ${recipe.ingredients.join(', ')}`,
+          `Instructions: ${recipe.instructions}`,
+          '',
+          'Send updated recipe as:',
+          '`title | ingredient1, ingredient2 | instructions`',
+        ].join('\n'),
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            keyboard: [[{ text: '❌ Cancel recipe' }]],
+            resize_keyboard: true,
+          },
+        },
+      );
+      return true;
     }
 
     if (query.data.startsWith('delete_')) {
@@ -248,12 +436,12 @@ export class CallbackHandler {
 
     if (query.data.startsWith('confirm_delete_')) {
       const id = query.data.replace('confirm_delete_', '');
-      const recipe = await this.recipies.findById(id);
+      const recipe = await this.recipies.findById(scopeChatId, id);
 
       if (!recipe) return;
 
       await ack();
-      await this.recipies.remove(id);
+      await this.recipies.remove(scopeChatId, id);
 
       await this.bot.sendMessage(chatId, '🗑 Recipe deleted.', {
         reply_markup: this.bot.getRecipiesMenu(),

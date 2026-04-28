@@ -6,6 +6,9 @@ import { FlowService } from '../flow/flow.service';
 import { ShoppingListService } from 'src/shopping-list/shoping-list.service';
 import { RecipiesService } from 'src/recipies/recipies.service';
 import { SpendingsService } from 'src/spendings/spendings.service';
+import { RemindersService } from 'src/reminders/reminders.service';
+import { ChatSettingsService } from 'src/chat-settings/chat-settings.service';
+import { SharedSpaceService } from 'src/shared-space/shared-space.service';
 
 @Injectable()
 export class FlowHandler {
@@ -15,6 +18,9 @@ export class FlowHandler {
     private shopping: ShoppingListService,
     private recipies: RecipiesService,
     private spendings: SpendingsService,
+    private reminders: RemindersService,
+    private settings: ChatSettingsService,
+    private sharedSpace: SharedSpaceService,
     private config: ConfigService,
   ) {}
 
@@ -23,6 +29,7 @@ export class FlowHandler {
   
     const chatId = msg.chat.id;
     const text = msg.text;
+    const scopeChatId = await this.sharedSpace.resolveScopeChatId(chatId);
   
     const state = this.flow.get(chatId);
     if (!state) return false;
@@ -37,8 +44,41 @@ export class FlowHandler {
       return true;
     }
 
-    console.log('state.step :>> ', state.step);
-  
+    if (state.step === 'shared_space_create_name') {
+      try {
+        const space = await this.sharedSpace.createSpace(chatId, text);
+        this.flow.delete(chatId);
+        await this.bot.sendMessage(
+          chatId,
+          `✅ Shared space created: *${space.name}*\nInvite code: \`${space.code}\``,
+          {
+            parse_mode: 'Markdown',
+            reply_markup: this.bot.getSharedDataMenu(),
+          },
+        );
+      } catch (e) {
+        const message =
+          e instanceof Error ? e.message : 'Could not create shared space.';
+        await this.bot.sendMessage(chatId, `⚠️ ${message}`);
+      }
+      return true;
+    }
+
+    if (state.step === 'shared_space_join_code') {
+      try {
+        const space = await this.sharedSpace.joinByCode(chatId, text);
+        this.flow.delete(chatId);
+        await this.bot.sendMessage(chatId, `✅ Joined shared space: *${space.name}*`, {
+          parse_mode: 'Markdown',
+          reply_markup: this.bot.getSharedDataMenu(),
+        });
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'Could not join shared space.';
+        await this.bot.sendMessage(chatId, `⚠️ ${message}`);
+      }
+      return true;
+    }
+
     if (state.step === 'product') {
       state.data.product = text;
       state.step = 'shop';
@@ -56,7 +96,7 @@ export class FlowHandler {
     }
   
     if (state.step === 'discount') {
-      await this.shopping.create({
+      await this.shopping.create(scopeChatId, {
         title: state.data.product,
         shopName: state.data.shop,
         kindOfDiscount: text === '-' ? '' : text,
@@ -68,6 +108,70 @@ export class FlowHandler {
         reply_markup: this.bot.getShoppingMenu(),
       });
   
+      return true;
+    }
+
+    if (state.step === 'edit_product_value') {
+      const id = state.data.id as string;
+      const [titleRaw, shopRaw, discountRaw] = text.split('|').map((v) => v.trim());
+
+      if (!titleRaw) {
+        await this.bot.sendMessage(
+          chatId,
+          '⚠️ Use format: `title | shop | discount`',
+          { parse_mode: 'Markdown' },
+        );
+        return true;
+      }
+
+      await this.shopping.update(scopeChatId, id, {
+        title: titleRaw,
+        shopName: !shopRaw || shopRaw === '-' ? '' : shopRaw,
+        kindOfDiscount: !discountRaw || discountRaw === '-' ? '' : discountRaw,
+      });
+
+      this.flow.delete(chatId);
+      await this.bot.sendMessage(chatId, '✅ Product updated.', {
+        reply_markup: this.bot.getShoppingMenu(),
+      });
+      return true;
+    }
+
+    if (state.step === 'reminder') {
+      try {
+        const parsed = this.reminders.parseReminderFlowInput(text);
+        const reminder = await this.reminders.create(scopeChatId, parsed);
+        this.flow.delete(chatId);
+
+        await this.bot.sendMessage(
+          chatId,
+          `✅ Reminder saved for ${this.reminders.formatReminderTime(reminder.remindAt)}.`,
+          {
+            reply_markup: this.bot.getAssistantMenu(),
+          },
+        );
+      } catch (e) {
+        const message =
+          e instanceof Error ? e.message : 'Could not create reminder.';
+        await this.bot.sendMessage(chatId, `⚠️ ${message}`);
+      }
+      return true;
+    }
+
+    if (state.step === 'edit_reminder_value') {
+      const id = state.data.id as string;
+      try {
+        const parsed = this.reminders.parseReminderFlowInput(text);
+        await this.reminders.update(scopeChatId, id, parsed);
+        this.flow.delete(chatId);
+        await this.bot.sendMessage(chatId, '✅ Reminder updated.', {
+          reply_markup: this.bot.getAssistantMenu(),
+        });
+      } catch (e) {
+        const message =
+          e instanceof Error ? e.message : 'Could not update reminder.';
+        await this.bot.sendMessage(chatId, `⚠️ ${message}`);
+      }
       return true;
     }
   
@@ -108,7 +212,10 @@ export class FlowHandler {
 
       state.data.amount = n;
       state.step = 'spending_currency';
-      const def = this.config.get<string>('SPENDING_DEFAULT_CURRENCY') ?? 'USD';
+      const def = await this.settings.getDefaultCurrency(
+        scopeChatId,
+        this.config.get<string>('SPENDING_DEFAULT_CURRENCY') ?? 'USD',
+      );
 
       await this.bot.sendMessage(
         chatId,
@@ -125,7 +232,10 @@ export class FlowHandler {
     }
 
     if (state.step === 'spending_currency') {
-      const def = this.config.get<string>('SPENDING_DEFAULT_CURRENCY') ?? 'USD';
+      const def = await this.settings.getDefaultCurrency(
+        scopeChatId,
+        this.config.get<string>('SPENDING_DEFAULT_CURRENCY') ?? 'USD',
+      );
 
       try {
         state.data.currency = this.spendings.parseSpendingCurrencyInput(
@@ -158,7 +268,7 @@ export class FlowHandler {
     if (state.step === 'spending_description') {
       const desc = text.trim() === '-' ? null : text.trim();
 
-      await this.spendings.create({
+      await this.spendings.create(scopeChatId, {
         category: state.data.category,
         amount: state.data.amount,
         currency: state.data.currency,
@@ -168,6 +278,36 @@ export class FlowHandler {
       this.flow.delete(chatId);
 
       await this.bot.sendMessage(chatId, '✅ Spending saved!', {
+        reply_markup: this.bot.getSpendingsMenu(),
+      });
+      return true;
+    }
+
+    if (state.step === 'edit_spending_value') {
+      const id = state.data.id as string;
+      const [categoryRaw, amountRaw, currencyRaw, noteRaw] = text
+        .split('|')
+        .map((v) => v.trim());
+
+      const amount = Number((amountRaw || '').replace(',', '.'));
+      if (!categoryRaw || Number.isNaN(amount) || amount <= 0 || !currencyRaw) {
+        await this.bot.sendMessage(
+          chatId,
+          '⚠️ Use format: `category | amount | currency | note`',
+          { parse_mode: 'Markdown' },
+        );
+        return true;
+      }
+
+      await this.spendings.update(scopeChatId, id, {
+        category: categoryRaw,
+        amount,
+        currency: currencyRaw,
+        description: !noteRaw || noteRaw === '-' ? null : noteRaw,
+      });
+
+      this.flow.delete(chatId);
+      await this.bot.sendMessage(chatId, '✅ Spending updated.', {
         reply_markup: this.bot.getSpendingsMenu(),
       });
       return true;
@@ -194,13 +334,14 @@ export class FlowHandler {
 
       this.flow.delete(chatId);
 
-      const reportCc = this.spendings.getReportCurrencyForChat(
-        chatId,
+      const reportCc = await this.settings.getReportCurrency(
+        scopeChatId,
         this.config.get<string>('SPENDING_REPORT_CURRENCY') ?? 'EUR',
       );
 
       try {
         const body = await this.spendings.getMonthlyReportMessage(
+          scopeChatId,
           year,
           month0,
           reportCc,
@@ -222,8 +363,8 @@ export class FlowHandler {
 
     if (state.step === 'spending_set_report_currency') {
       try {
-        const normalized = this.spendings.setReportCurrencyForChat(
-          chatId,
+        const normalized = await this.settings.setReportCurrency(
+          scopeChatId,
           text,
         );
         this.flow.delete(chatId);
@@ -312,7 +453,7 @@ export class FlowHandler {
         if (text === '💾 Save') {
           const { name, ingredients, instructions } = state.data;
       
-          await this.recipies.create({
+          await this.recipies.create(scopeChatId, {
             title: name,
             ingredients,
             instructions,
@@ -336,6 +477,44 @@ export class FlowHandler {
       
           return true;
         }
+      }
+
+      if (state.step === 'edit_recipe_value') {
+        const id = state.data.id as string;
+        const [titleRaw, ingredientsRaw, instructionsRaw] = text
+          .split('|')
+          .map((v) => v.trim());
+
+        if (!titleRaw || !ingredientsRaw || !instructionsRaw) {
+          await this.bot.sendMessage(
+            chatId,
+            '⚠️ Use format: `title | ingredient1, ingredient2 | instructions`',
+            { parse_mode: 'Markdown' },
+          );
+          return true;
+        }
+
+        const ingredients = ingredientsRaw
+          .split(',')
+          .map((v) => v.trim())
+          .filter(Boolean);
+
+        if (!ingredients.length) {
+          await this.bot.sendMessage(chatId, '⚠️ Add at least one ingredient.');
+          return true;
+        }
+
+        await this.recipies.update(scopeChatId, id, {
+          title: titleRaw,
+          ingredients,
+          instructions: instructionsRaw,
+        });
+
+        this.flow.delete(chatId);
+        await this.bot.sendMessage(chatId, '✅ Recipe updated.', {
+          reply_markup: this.bot.getRecipiesMenu(),
+        });
+        return true;
       }
   }
 }

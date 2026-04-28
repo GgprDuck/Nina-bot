@@ -13,21 +13,9 @@ export class SpendingsService {
     private readonly currency: CurrencyService,
   ) {}
 
-  private readonly reportCurrencyByChat = new Map<number, string>();
-
   /** Two-decimal rounding aligned with converted amounts from CurrencyService. */
   private roundMoney(n: number): number {
     return Number(Math.round(Number(n + 'e2')) + 'e-2');
-  }
-
-  getReportCurrencyForChat(chatId: number, fallback: string): string {
-    return this.reportCurrencyByChat.get(chatId) ?? fallback;
-  }
-
-  setReportCurrencyForChat(chatId: number, code: string) {
-    const normalized = this.currency.normalizeCode(code);
-    this.reportCurrencyByChat.set(chatId, normalized);
-    return normalized;
   }
 
   parseSpendingCurrencyInput(raw: string, defaultCode: string): string {
@@ -36,28 +24,73 @@ export class SpendingsService {
     return this.currency.normalizeCode(code);
   }
 
-  findRecent(limit = 50) {
-    return this.repository.findRecent(limit);
+  findRecent(chatId: number, limit = 50) {
+    return this.repository.findRecent(chatId, limit);
   }
 
-  findByIdOptional(id: string) {
-    return this.repository.findById(id);
+  findByIdOptional(chatId: number, id: string) {
+    return this.repository.findById(chatId, id);
   }
 
-  async findById(id: string) {
-    const row = await this.repository.findById(id);
+  async findById(chatId: number, id: string) {
+    const row = await this.repository.findById(chatId, id);
     if (!row) {
       throw new NotFoundException('Spending not found');
     }
     return row;
   }
 
-  async remove(id: string) {
-    await this.findById(id);
-    return this.repository.delete(id);
+  async remove(chatId: number, id: string) {
+    await this.findById(chatId, id);
+    return this.repository.delete(chatId, id);
   }
 
-  create(input: {
+  async update(
+    chatId: number,
+    id: string,
+    input: Partial<{
+      category: string;
+      amount: number;
+      currency: string;
+      description?: string | null;
+    }>,
+  ) {
+    await this.findById(chatId, id);
+
+    const payload: Partial<{
+      category: string;
+      amount: number;
+      currency: string;
+      description: string | null;
+    }> = {};
+
+    if (input.category != null) {
+      if (!input.category.trim()) {
+        throw new BadRequestException('Category is required');
+      }
+      payload.category = input.category.trim();
+    }
+
+    if (input.amount != null) {
+      if (Number.isNaN(input.amount) || input.amount <= 0) {
+        throw new BadRequestException('Amount must be a positive number');
+      }
+      payload.amount = input.amount;
+    }
+
+    if (input.currency != null) {
+      payload.currency = this.currency.normalizeCode(input.currency);
+    }
+
+    if (input.description !== undefined) {
+      payload.description = input.description?.trim() || null;
+    }
+
+    await this.repository.update(chatId, id, payload);
+    return this.findById(chatId, id);
+  }
+
+  create(chatId: number, input: {
     category: string;
     amount: number;
     currency: string;
@@ -71,7 +104,7 @@ export class SpendingsService {
     }
     const currencyCode = this.currency.normalizeCode(input.currency);
 
-    return this.repository.create({
+    return this.repository.create(chatId, {
       category: input.category.trim(),
       amount: input.amount,
       currency: currencyCode,
@@ -79,22 +112,23 @@ export class SpendingsService {
     });
   }
 
-  async findByCalendarMonth(year: number, monthIndex0: number) {
+  async findByCalendarMonth(chatId: number, year: number, monthIndex0: number) {
     if (monthIndex0 < 0 || monthIndex0 > 11) {
       throw new BadRequestException('Invalid month');
     }
     const start = new Date(Date.UTC(year, monthIndex0, 1, 0, 0, 0, 0));
     const end = new Date(Date.UTC(year, monthIndex0 + 1, 1, 0, 0, 0, 0));
-    return this.repository.findBetween(start, end);
+    return this.repository.findBetween(chatId, start, end);
   }
 
   async summarizeMonthInCurrency(
+    chatId: number,
     year: number,
     monthIndex0: number,
     targetCurrency: string,
   ) {
     const to = this.currency.normalizeCode(targetCurrency);
-    const rows = await this.findByCalendarMonth(year, monthIndex0);
+    const rows = await this.findByCalendarMonth(chatId, year, monthIndex0);
 
     let total = 0;
     const byCategory = new Map<string, number>();
@@ -138,11 +172,13 @@ export class SpendingsService {
   }
 
   async getMonthlyReportMessage(
+    chatId: number,
     year: number,
     monthIndex0: number,
     reportCurrency: string,
   ): Promise<string> {
     const summary = await this.summarizeMonthInCurrency(
+      chatId,
       year,
       monthIndex0,
       reportCurrency,

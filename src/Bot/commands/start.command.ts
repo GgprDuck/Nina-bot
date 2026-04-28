@@ -10,8 +10,12 @@ export class StartCommand implements BotCommand {
   constructor(private readonly bot: BotService) {}
 
   execute(msg: Message) {
-    return this.bot.sendMessage(msg.chat.id, 'Welcome 👋\nChoose an option:', {
-      reply_markup: this.bot.getMainMenu(),
-    });
+    return this.bot.sendMessage(
+      msg.chat.id,
+      'Welcome 👋\nChoose an option or send /help to see quick examples:',
+      {
+        reply_markup: this.bot.getMainMenu(),
+      },
+    );
   }
 }

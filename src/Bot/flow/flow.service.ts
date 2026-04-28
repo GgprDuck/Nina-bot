@@ -14,7 +14,14 @@ export type FlowStep =
   | 'spending_currency'
   | 'spending_description'
   | 'spending_month_query'
-  | 'spending_set_report_currency';
+  | 'spending_set_report_currency'
+  | 'reminder'
+  | 'edit_product_value'
+  | 'edit_recipe_value'
+  | 'edit_spending_value'
+  | 'edit_reminder_value'
+  | 'shared_space_create_name'
+  | 'shared_space_join_code';
 
 @Injectable()
 export class FlowService {
